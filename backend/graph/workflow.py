@@ -12,6 +12,7 @@ from backend.graph.nodes.emergency import emergency_node
 from backend.graph.nodes.doctor_recommender import doctor_recommender_node
 from backend.graph.nodes.schedule import schedule_node
 from backend.graph.nodes.booking import booking_node
+from backend.graph.nodes.human_review import human_review_node
 
 def route_intent(state: HospitalState) -> str:
     """Decide next node based on classified user intent."""
@@ -167,13 +168,24 @@ def route_booking(state: HospitalState) -> str:
     return END
 
 def route_emergency(state: HospitalState) -> str:
-    """Decide next step based on triage priority override."""
+    """Decide next step based on triage priority override and HITL."""
     status = state.get("booking_status")
-    if status == "emergency_redirect":
-        return END
+    priority = state.get("priority")
+    
+    # Route to human review if HITL case triggered
+    if status == "emergency_redirect" or priority == "EMERGENCY" or status == "prescription_request":
+        return "human_review"
+        
     if status == "awaiting_symptoms":
         return END
     return "doctor_recommender"
+
+def route_human_review(state: HospitalState) -> str:
+    """Decide next step after human review decision."""
+    status = state.get("booking_status")
+    if status == "info_complete":
+        return "doctor_recommender"
+    return END
 
 # Initialize the workflow graph
 workflow = StateGraph(HospitalState)
@@ -186,6 +198,7 @@ workflow.add_node("missing_info", missing_info_node)
 workflow.add_node("symptom", symptom_node)
 workflow.add_node("medical_decision", medical_decision_node)
 workflow.add_node("emergency", emergency_node)
+workflow.add_node("human_review", human_review_node)
 workflow.add_node("doctor_recommender", doctor_recommender_node)
 workflow.add_node("schedule", schedule_node)
 workflow.add_node("booking", booking_node)
@@ -237,6 +250,16 @@ workflow.add_edge("medical_decision", "emergency")
 workflow.add_conditional_edges(
     "emergency",
     route_emergency,
+    {
+        "human_review": "human_review",
+        "doctor_recommender": "doctor_recommender",
+        END: END
+    }
+)
+
+workflow.add_conditional_edges(
+    "human_review",
+    route_human_review,
     {
         "doctor_recommender": "doctor_recommender",
         END: END

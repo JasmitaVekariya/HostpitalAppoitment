@@ -34,6 +34,7 @@ async def lifespan(app: FastAPI):
 
 from backend.routers.auth import router as auth_router
 from backend.routers.chat import router as chat_router
+from backend.routers.human_review import router as human_review_router
 
 app = FastAPI(
     title="AI Hospital Appointment Orchestrator",
@@ -45,6 +46,7 @@ app = FastAPI(
 # Include Routers
 app.include_router(auth_router)
 app.include_router(chat_router)
+app.include_router(human_review_router)
 
 # CORS configuration to allow local frontend access
 app.add_middleware(

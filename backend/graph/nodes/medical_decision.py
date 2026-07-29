@@ -95,9 +95,20 @@ def medical_decision_node(state: HospitalState) -> Dict[str, Any]:
         if priority_val not in SUPPORTED_PRIORITIES:
             priority_val = "LOW"
             
+        # Detect prescription requests for HITL
+        prescription_triggers = [
+            "antibiotic", "steroid", "prescribe", "prescription", "medicine for"
+        ]
+        booking_status = state.get("booking_status")
+        for trigger in prescription_triggers:
+            if trigger in user_context_lower:
+                booking_status = "prescription_request"
+                break
+            
         return {
             "department": matched_dept,
             "priority": priority_val,
+            "booking_status": booking_status,
             "errors": errors
         }
         

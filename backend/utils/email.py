@@ -310,3 +310,50 @@ def send_completion_summary(
     subject = f"✔️ Visit Summary – {date_str} | Sunrise Hospital"
     send_email(patient_email, subject, _wrap_html("Visit Completed", body),
                f"Dear {patient_name}, thank you for your visit with {doctor_name} on {date_str}.")
+
+# ─────────────────────────────────────────────
+# 5. Human-in-the-Loop Review Request
+# ─────────────────────────────────────────────
+
+def send_human_review_request(
+    to_address: str,
+    patient_name: str,
+    age: str,
+    symptoms: str,
+    review_id: str,
+    review_type: str
+) -> None:
+    body = f"""
+    <h2 style="color:#b91c1c;margin:0 0 8px;">⚠️ Doctor Review Required</h2>
+    <p style="color:#475569;font-size:15px;margin:0 0 24px;">
+      An AI triage session requires human review. Type: <strong>{review_type}</strong>
+    </p>
+
+    <div style="background:#fef2f2;border-left:4px solid #ef4444;border-radius:8px;padding:20px 16px;margin-bottom:24px;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        {_info_row("👤 Patient Name", patient_name)}
+        {_info_row("🎂 Age", age)}
+        {_info_row("🩹 Symptoms", symptoms)}
+        {_info_row("🆔 Review ID", review_id)}
+      </table>
+    </div>
+
+    <div style="text-align:center; margin-bottom: 24px;">
+        <p style="color:#1e293b;font-weight:600;margin-bottom:16px;">Please select an action to resume the patient's session:</p>
+        
+        <a href="{settings.FRONTEND_URL}/api/human-review/{review_id}/APPROVE" style="display:inline-block; padding:10px 20px; background-color:#10b981; color:white; text-decoration:none; border-radius:6px; font-weight:bold; margin-right:10px;">APPROVE</a>
+        
+        <a href="{settings.FRONTEND_URL}/api/human-review/{review_id}/REJECT" style="display:inline-block; padding:10px 20px; background-color:#f59e0b; color:white; text-decoration:none; border-radius:6px; font-weight:bold; margin-right:10px;">REJECT</a>
+        
+        <a href="{settings.FRONTEND_URL}/api/human-review/{review_id}/EMERGENCY" style="display:inline-block; padding:10px 20px; background-color:#ef4444; color:white; text-decoration:none; border-radius:6px; font-weight:bold;">EMERGENCY</a>
+    </div>
+
+    <p style="color:#64748b;font-size:13px;text-align:center;">
+      This link is one-time use and will instantly resume the patient's chat session.
+    </p>
+    """
+
+    subject = f"⚠️ Action Required: AI Triage Review ({review_type})"
+    send_email(to_address, subject, _wrap_html("Action Required", body),
+               f"Doctor Review Required for {patient_name}. Review ID: {review_id}. Please check your HTML email to approve/reject.")
+

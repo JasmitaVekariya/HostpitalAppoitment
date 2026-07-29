@@ -14,6 +14,15 @@ class SymptomInfo(TypedDict, total=False):
     severity: Optional[str]
     body_part: Optional[str]
 
+class ReviewInfo(TypedDict, total=False):
+    review_id: Optional[str]
+    review_type: Optional[str] # "HIGH_RISK", "PRESCRIPTION", "MEDICAL_REPORT"
+    doctor_email: Optional[str]
+    pending_action: Optional[bool]
+    review_status: Optional[str] # "PENDING", "APPROVED", "REJECTED", "EMERGENCY"
+    doctor_comments: Optional[str]
+    timestamp: Optional[str]
+
 class HospitalState(TypedDict):
     # Shared message thread (using add_messages reducer to append new incoming messages)
     messages: Annotated[Sequence[BaseMessage], add_messages]
@@ -21,6 +30,9 @@ class HospitalState(TypedDict):
     # Session user reference
     user_id: Optional[str]
     session_id: Optional[str]
+
+    # HITL Review Data
+    review_info: Optional[ReviewInfo]
     
     # Inferred conversation language (English, Hindi, Gujarati)
     language: Optional[str]
