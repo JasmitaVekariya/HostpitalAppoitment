@@ -32,7 +32,7 @@ def route_missing_info(state: HospitalState) -> str:
     """Decide next node based on completeness of patient info."""
     status = state.get("booking_status")
     if status in [
-        "info_complete", "awaiting_symptoms", "emergency_redirect", 
+        "info_complete", "awaiting_symptoms", "emergency_redirect",
         "no_slots_available", "no_doctors_available"
     ]:
         session_id = state.get("session_id")
@@ -40,7 +40,7 @@ def route_missing_info(state: HospitalState) -> str:
             import uuid
             from backend.database import SessionLocal
             from backend.models import Appointment
-            
+
             # Check if the user is explicitly requesting a reschedule or slot choice
             is_rescheduling_query = False
             messages = state.get("messages", [])
@@ -57,7 +57,7 @@ def route_missing_info(state: HospitalState) -> str:
                     re.search(r"option\s+\d+", last_msg)
                 ):
                     is_rescheduling_query = True
-            
+
             db = SessionLocal()
             try:
                 existing_appt = db.query(Appointment).filter(
@@ -71,14 +71,84 @@ def route_missing_info(state: HospitalState) -> str:
             finally:
                 db.close()
         return "symptom"
+
     elif status == "awaiting_slot_selection":
+        # If the patient expresses a date preference (e.g. "give me after 3 Aug",
+        # "any slot on Friday"), re-run the schedule_node with the new preference.
+        # Only route to booking when a slot number or confirmable date+time is given.
+        messages = state.get("messages", [])
+        if messages:
+            import re
+            last_msg = messages[-1].content.strip().lower()
+            available_slots = state.get("available_slots", [])
+
+            # Numeric option or confirmed natural language match → go to booking
+            has_numeric = bool(re.search(r"\b[123]\b", last_msg))
+
+            # Natural language slot match check (mirrors booking_node logic)
+            natural_match = False
+            if not has_numeric and available_slots:
+                import datetime as _dt
+                for slot in available_slots:
+                    try:
+                        slot_date_obj = _dt.datetime.strptime(slot["date"], "%Y-%m-%d").date()
+                        day_variants = [
+                            slot_date_obj.strftime("%-d"),
+                            slot_date_obj.strftime("%b").lower(),
+                            slot_date_obj.strftime("%B").lower(),
+                            slot_date_obj.strftime("%A").lower(),
+                        ]
+                        time_str = slot["start_time"].lower()
+                        time_variants = [
+                            time_str.replace(" ", ""),
+                            time_str.split(":")[0].lstrip("0"),
+                        ]
+                        date_hit = any(v in last_msg for v in day_variants if v)
+                        time_hit = any(v in last_msg for v in time_variants if v)
+                        if (date_hit and time_hit) or (date_hit and len(available_slots) == 1):
+                            natural_match = True
+                            break
+                    except Exception:
+                        pass
+
+            if has_numeric or natural_match:
+                return "booking"
+
+            # Date preference expressed → re-run schedule with new date filter
+            date_keywords = [
+                "after", "before", "on ", "from ", "morning", "afternoon", "evening",
+                "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+                "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+                "next week", "tomorrow", "prefer", "want", "give me", "any slot", "other slot",
+                "alternative", "different", "another", "more"
+            ]
+            if any(kw in last_msg for kw in date_keywords):
+                return "schedule"
+
         return "booking"
+
     return END
 
 def route_booking(state: HospitalState) -> str:
     """Decide next node from booking selection."""
     status = state.get("booking_status")
     if status == "info_complete":
+        # If the user typed a date/time preference instead of a slot number,
+        # skip triage and go directly to schedule for a filtered re-query
+        import re
+        messages = state.get("messages", [])
+        date_keywords = [
+            "after", "before", "on ", "from ", "morning", "afternoon", "evening",
+            "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+            "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+            "next week", "tomorrow", "give me", "any slot", "other slot",
+            "alternative", "different", "another", "more"
+        ]
+        if messages:
+            last_msg = messages[-1].content.strip().lower()
+            has_numeric = bool(re.search(r"\b[123]\b", last_msg))
+            if not has_numeric and any(kw in last_msg for kw in date_keywords):
+                return "schedule"
         return "symptom"
     return END
 
@@ -140,6 +210,7 @@ workflow.add_conditional_edges(
     route_booking,
     {
         "symptom": "symptom",
+        "schedule": "schedule",
         END: END
     }
 )

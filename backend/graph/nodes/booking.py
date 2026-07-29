@@ -33,11 +33,42 @@ def booking_node(state: HospitalState) -> Dict[str, Any]:
             ).first()
         except Exception as e:
             print(f"[DEBUG] Error checking existing appt in booking node: {e}")
-            
+        
     # 1. Parse slot option choice (e.g. "1", "2", "3", "option 1", "option 2")
-    option_match = re.search(r"(?:option\s+)?(\d)", last_message)
+    option_match = re.search(r"(?:option\s+)?([123])\b", last_message)
     selected_option = int(option_match.group(1)) if option_match else None
-    
+
+    # 1b. Natural language slot match — "I'll take the 10 AM on Aug 5" / "confirm Aug 5"
+    if not selected_option and available_slots:
+        for idx, slot in enumerate(available_slots):
+            slot_date_str = slot["date"]  # e.g. "2026-08-05"
+            slot_time_str = slot["start_time"].lower()  # e.g. "10:00 am"
+            # Build multiple match strings from the slot
+            try:
+                slot_date_obj = __import__("datetime").datetime.strptime(slot_date_str, "%Y-%m-%d").date()
+                day_variants = [
+                    slot_date_obj.strftime("%-d"),          # "5"
+                    slot_date_obj.strftime("%d"),            # "05"
+                    slot_date_obj.strftime("%b").lower(),    # "aug"
+                    slot_date_obj.strftime("%B").lower(),    # "august"
+                    slot_date_obj.strftime("%A").lower(),    # "thursday"
+                ]
+                time_variants = [
+                    slot_time_str.replace(" ", ""),          # "10:00am"
+                    slot_time_str.split(":")[0].lstrip("0"), # "10"
+                ]
+                date_hit = any(v in last_message for v in day_variants if v)
+                time_hit = any(v in last_message for v in time_variants if v)
+                if date_hit and time_hit:
+                    selected_option = idx + 1
+                    break
+                elif date_hit and len(available_slots) == 1:
+                    # Only 1 slot was offered; date alone is enough to confirm
+                    selected_option = 1
+                    break
+            except Exception:
+                pass
+
     # If the user has an existing appointment but did not select a slot option, check if they want to keep the current one
     if existing_appt and not selected_option:
         refusal_prompt = (
@@ -88,12 +119,12 @@ def booking_node(state: HospitalState) -> Dict[str, Any]:
                 }
         except Exception as e:
             print(f"[DEBUG] Error classifying reschedule refusal: {e}")
-            
-    # If the user did not select an option, route back to triage to handle query/symptoms
+
+    # If the user did not select an option, route back to triage/schedule to handle date preference / query
     if not selected_option or not available_slots or selected_option < 1 or selected_option > len(available_slots):
         db.close()
         return {
-            "booking_status": "info_complete", # Reset status to force re-triage / scheduling evaluation
+            "booking_status": "info_complete",  # Reset status to force re-triage / scheduling evaluation
             "errors": errors
         }
         

@@ -43,6 +43,10 @@ class HospitalState(TypedDict):
     selected_slot: Optional[Dict[str, Any]]
     booking_status: Optional[str]
     topic_shifted: Optional[bool]
-    
+
+    # Patient's expressed date/time scheduling preference (ISO date string & HH:MM time string)
+    preferred_date: Optional[str]
+    preferred_time: Optional[str]
+
     # Global tracking arrays
     errors: List[str]
