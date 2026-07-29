@@ -42,6 +42,7 @@ class HospitalState(TypedDict):
     available_slots: List[Dict[str, Any]]
     selected_slot: Optional[Dict[str, Any]]
     booking_status: Optional[str]
+    topic_shifted: Optional[bool]
     
     # Global tracking arrays
     errors: List[str]

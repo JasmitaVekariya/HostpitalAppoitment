@@ -56,12 +56,32 @@ def medical_decision_node(state: HospitalState) -> Dict[str, Any]:
                 priority_val = "EMERGENCY"
                 break
         
-        # Guardrail: Normalize department matching
+        # Guardrail: Normalize department matching with robust prefix and synonym matching
         matched_dept = "General Medicine"
-        for dept in SUPPORTED_DEPARTMENTS:
-            if dept.lower() == recommended_dept.lower():
-                matched_dept = dept
-                break
+        rec_dept_lower = recommended_dept.lower()
+        if "cardio" in rec_dept_lower or "heart" in rec_dept_lower:
+            matched_dept = "Cardiology"
+        elif "ortho" in rec_dept_lower or "bone" in rec_dept_lower or "joint" in rec_dept_lower or "fracture" in rec_dept_lower or "back pain" in rec_dept_lower or "neck pain" in rec_dept_lower:
+            matched_dept = "Orthopedics"
+        elif "neuro" in rec_dept_lower or "brain" in rec_dept_lower or "nerve" in rec_dept_lower:
+            matched_dept = "Neurology"
+        elif "pedia" in rec_dept_lower or "child" in rec_dept_lower or "infant" in rec_dept_lower:
+            matched_dept = "Pediatrics"
+        elif "derma" in rec_dept_lower or "skin" in rec_dept_lower or "rash" in rec_dept_lower:
+            matched_dept = "Dermatology"
+        elif "ent" in rec_dept_lower or "ear" in rec_dept_lower or "nose" in rec_dept_lower or "throat" in rec_dept_lower:
+            matched_dept = "ENT"
+        elif "gyn" in rec_dept_lower or "women" in rec_dept_lower or "preg" in rec_dept_lower:
+            matched_dept = "Gynecology"
+        elif "ophthal" in rec_dept_lower or "eye" in rec_dept_lower or "vision" in rec_dept_lower:
+            matched_dept = "Ophthalmology"
+        elif "dent" in rec_dept_lower or "tooth" in rec_dept_lower or "teeth" in rec_dept_lower or "gum" in rec_dept_lower:
+            matched_dept = "Dentistry"
+        else:
+            for dept in SUPPORTED_DEPARTMENTS:
+                if dept.lower() in rec_dept_lower or rec_dept_lower in dept.lower():
+                    matched_dept = dept
+                    break
                 
         # Guardrail: Force Pediatrics if age < 18 and a general department was assigned
         if age is not None and age < 18 and matched_dept == "General Medicine":

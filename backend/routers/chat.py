@@ -173,7 +173,8 @@ def handle_chat_message(
         "priority": final_state.get("priority"),
         "doctor_candidates": final_state.get("doctor_candidates", []),
         "selected_doctor": final_state.get("selected_doctor"),
-        "available_slots": final_state.get("available_slots", [])
+        "available_slots": final_state.get("available_slots", []),
+        "topic_shifted": final_state.get("topic_shifted", False)
     }
     db.commit()
 
@@ -186,7 +187,8 @@ def handle_chat_message(
         "priority": final_state.get("priority"),
         "doctor_candidates": final_state.get("doctor_candidates", []),
         "selected_doctor": final_state.get("selected_doctor"),
-        "available_slots": final_state.get("available_slots", [])
+        "available_slots": final_state.get("available_slots", []),
+        "topic_shifted": final_state.get("topic_shifted", False)
     }
 
 @router.post("/chat/new")

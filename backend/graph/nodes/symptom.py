@@ -67,6 +67,7 @@ def symptom_node(state: HospitalState) -> Dict[str, Any]:
         "severity": "moderate",
         "body_part": None
     }
+    extracted_topic_shifted = False
     
     # 2. Call LLM to extract & aggregate
     try:
@@ -84,6 +85,7 @@ def symptom_node(state: HospitalState) -> Dict[str, Any]:
         extracted_duration = result_dict.get("duration")
         extracted_severity = result_dict.get("severity", "moderate")
         extracted_body_part = result_dict.get("body_part")
+        extracted_topic_shifted = bool(result_dict.get("topic_shifted", False))
         
         # Determine updated symptoms list
         updated_symptoms = []
@@ -151,11 +153,13 @@ def symptom_node(state: HospitalState) -> Dict[str, Any]:
             "symptoms": symptom_data,
             "booking_status": "awaiting_symptoms",
             "messages": [ai_message],
+            "topic_shifted": extracted_topic_shifted,
             "errors": errors
         }
         
     return {
         "symptoms": symptom_data,
         "booking_status": "info_complete",
+        "topic_shifted": extracted_topic_shifted,
         "errors": errors
     }
