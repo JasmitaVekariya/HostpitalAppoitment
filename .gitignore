@@ -1,0 +1,19 @@
+# Environment configuration files
+.env
+.env.local
+.env.*.local
+*.env
+
+# Python virtual environment and caches
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Node modules and build outputs
+node_modules/
+dist/
+dist-ssr/
+.DS_Store
