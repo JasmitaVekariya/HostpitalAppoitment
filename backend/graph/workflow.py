@@ -188,10 +188,14 @@ def route_emergency(state: HospitalState) -> str:
 def route_human_review(state: HospitalState) -> str:
     """Decide next step after human review decision."""
     status = state.get("booking_status")
+    if status == "awaiting_review":
+        return "human_review"
     if status == "info_complete":
         return "doctor_recommender"
     if status == "appointment_approved":
         return "finalize_booking"
+    if status == "awaiting_slot_selection":
+        return "schedule"
     return END
 
 # Initialize the workflow graph
@@ -272,8 +276,10 @@ workflow.add_conditional_edges(
     "human_review",
     route_human_review,
     {
+        "human_review": "human_review",
         "doctor_recommender": "doctor_recommender",
         "finalize_booking": "finalize_booking",
+        "schedule": "schedule",
         END: END
     }
 )

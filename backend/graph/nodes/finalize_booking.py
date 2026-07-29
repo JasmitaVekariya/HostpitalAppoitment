@@ -30,17 +30,22 @@ def finalize_booking_node(state: HospitalState) -> Dict[str, Any]:
         patient_uuid = uuid.UUID(user_id)
         session_uuid = uuid.UUID(session_id) if session_id else None
         
-        # Check if rescheduling
+        # Fetch the PENDING appointment
         existing_appt = None
         if session_uuid:
             existing_appt = db.query(Appointment).filter(
                 Appointment.conversation_id == session_uuid,
-                Appointment.booking_status == "confirmed"
+                Appointment.status == "PENDING"
             ).first()
             
-        if existing_appt:
+        if not existing_appt:
+            return {"errors": errors + ["Finalize Booking: No PENDING appointment found."]}
+            
+        old_slot_id = state.get("old_slot_id")
+        
+        if old_slot_id:
             # Complete Reschedule
-            old_slot = db.query(DoctorSchedule).filter(DoctorSchedule.id == existing_appt.schedule_id).first()
+            old_slot = db.query(DoctorSchedule).filter(DoctorSchedule.id == old_slot_id).first()
             old_date = old_slot.date if old_slot else None
             old_time = old_slot.start_time if old_slot else None
             
@@ -48,8 +53,8 @@ def finalize_booking_node(state: HospitalState) -> Dict[str, Any]:
                 old_slot.status = "available"
                 
             slot_record.status = "booked"
-            existing_appt.schedule_id = slot_record.id
             existing_appt.status = "RESCHEDULED"
+            existing_appt.booking_status = "confirmed"
             db.commit()
             
             # Send Email
@@ -81,27 +86,18 @@ def finalize_booking_node(state: HospitalState) -> Dict[str, Any]:
                 "available_slots": [],
                 "selected_doctor": None,
                 "selected_slot": None,
+                "old_slot_id": None,
                 "messages": [AIMessage(content=reschedule_msg)],
                 "errors": errors
             }
         else:
             # Complete New Booking
-            symptom_list = state.get("symptoms", {}).get("symptoms", [])
-            new_appointment = Appointment(
-                patient_id=patient_uuid,
-                doctor_id=slot_record.doctor_id,
-                schedule_id=slot_record.id,
-                symptoms=str(symptom_list),
-                symptom_summary=", ".join(symptom_list),
-                booking_status="confirmed",
-                status="UPCOMING",
-                conversation_id=session_uuid
-            )
-            db.add(new_appointment)
+            existing_appt.status = "UPCOMING"
+            existing_appt.booking_status = "confirmed"
             slot_record.status = "booked"
             db.commit()
             
-            # Send Email
+            symptom_list = state.get("symptoms", {}).get("symptoms", [])
             try:
                 patient_user = db.query(User).filter(User.id == patient_uuid).first()
                 doc_record = db.query(Doctor).filter(Doctor.id == slot_record.doctor_id).first()

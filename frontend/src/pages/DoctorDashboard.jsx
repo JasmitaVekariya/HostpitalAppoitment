@@ -182,7 +182,7 @@ export default function DoctorDashboard() {
 
           {/* Status Tabs */}
           <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 w-full md:w-auto">
-            {["all", "upcoming", "completed", "missed", "cancelled"].map((tab) => (
+            {["all", "pending", "upcoming", "completed", "missed", "cancelled"].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setStatusFilter(tab)}
@@ -315,6 +315,50 @@ export default function DoctorDashboard() {
                       );
                     })()}
                   </div>
+
+                  {/* Pending Approval Section */}
+                  {appt.status === "PENDING" && (
+                    <div className="space-y-2 pt-2 border-t border-slate-800/80">
+                      <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest block">
+                        Requires Approval
+                      </span>
+                      <p className="text-xs text-slate-300 leading-relaxed bg-amber-500/10 p-2.5 border border-amber-500/20 rounded-xl mb-2">
+                        The AI triage requested a slot. Do you approve this appointment?
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={async () => {
+                            if (window.confirm("Approve this appointment?")) {
+                              try {
+                                await API.get(`/api/human-review/${appt.conversation_id}/APPROVE`);
+                                fetchDoctorAppointments();
+                              } catch (err) {
+                                alert("Failed to approve appointment.");
+                              }
+                            }
+                          }}
+                          className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-bold rounded-xl transition duration-200"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (window.confirm("Reject this appointment?")) {
+                              try {
+                                await API.get(`/api/human-review/${appt.conversation_id}/REJECT`);
+                                fetchDoctorAppointments();
+                              } catch (err) {
+                                alert("Failed to reject appointment.");
+                              }
+                            }
+                          }}
+                          className="flex-1 py-2 bg-rose-600 hover:bg-rose-500 active:scale-95 text-white text-xs font-bold rounded-xl transition duration-200"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Doctor Notes & Action Section */}
                   {["UPCOMING", "SCHEDULED", "RESCHEDULED"].includes(appt.status) && (

@@ -177,10 +177,26 @@ def booking_node(state: HospitalState) -> Dict[str, Any]:
                     "errors": errors
                 }
                 
-            # 3a. Prepare Reschedule (Defer DB insertion for Human Review)
+            # 3a. Prepare Reschedule (Save as PENDING)
+            # We don't free the old slot yet, just mark the new one as PENDING
+            # Wait, since it's a reschedule, we can just update the existing appt status to PENDING
+            # But we need to remember the old slot. Let's just create a new PENDING appt for the reschedule,
+            # and when finalized, we cancel the old one. Or we can just update the existing one.
+            # To keep it simple, let's update the existing appointment to PENDING and change its schedule_id.
+            
+            # Save old slot info to state so finalize_booking can free it
+            old_slot = db.query(DoctorSchedule).filter(DoctorSchedule.id == existing_appt.schedule_id).first()
+            old_slot_id = old_slot.id if old_slot else None
+            
+            existing_appt.schedule_id = slot_record.id
+            existing_appt.status = "PENDING"
+            existing_appt.booking_status = "appointment_approval_required"
+            db.commit()
+            
             return {
                 "booking_status": "appointment_approval_required",
                 "selected_slot": chosen_slot_data,
+                "old_slot_id": old_slot_id,
                 "errors": errors
             }
             
@@ -206,7 +222,21 @@ def booking_node(state: HospitalState) -> Dict[str, Any]:
                 "errors": errors
             }
             
-        # 3b. Prepare New Booking (Defer DB insertion for Human Review)
+        # 3b. Prepare New Booking (Save as PENDING)
+        symptom_list = state.get("symptoms", {}).get("symptoms", [])
+        new_appointment = Appointment(
+            patient_id=patient_uuid,
+            doctor_id=slot_record.doctor_id,
+            schedule_id=slot_record.id,
+            symptoms=str(symptom_list),
+            symptom_summary=", ".join(symptom_list),
+            booking_status="appointment_approval_required",
+            status="PENDING",
+            conversation_id=session_uuid
+        )
+        db.add(new_appointment)
+        db.commit()
+        
         return {
             "booking_status": "appointment_approval_required",
             "selected_slot": chosen_slot_data,

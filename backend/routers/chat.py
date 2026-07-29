@@ -550,7 +550,7 @@ def get_doctor_appointments(
             "status": appt.status or "UPCOMING",
             "doctor_notes": appt.doctor_notes,
             "completed_at": appt.completed_at.isoformat() if appt.completed_at else None,
+            "conversation_id": str(appt.conversation_id) if appt.conversation_id else None,
             "created_at": appt.created_at.isoformat()
         })
     return result
-

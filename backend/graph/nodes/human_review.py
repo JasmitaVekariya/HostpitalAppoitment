@@ -37,9 +37,60 @@ def human_review_node(state: HospitalState) -> Dict[str, Any]:
 
     # Check if we already sent the review email and are just waiting
     if review_info.get("pending_action"):
-        # Graph resumed but no decision made? Suspend again.
-        interrupt("Waiting for doctor review")
-        return {}
+        decision = interrupt("Waiting for doctor review")
+        action = decision.get("decision", "").upper() if isinstance(decision, dict) else str(decision).upper()
+        
+        final_review_info = {**review_info, "pending_action": False, "review_status": action}
+        
+        response_messages = []
+        new_status = state.get("booking_status")
+        
+        if action == "APPROVE":
+            if review_info.get("review_type") == "APPOINTMENT_APPROVAL":
+                response_messages.append(AIMessage(content="✅ The doctor has approved your appointment slot."))
+                new_status = "appointment_approved"
+            else:
+                response_messages.append(AIMessage(content="✅ The doctor has reviewed and approved your request. Let's proceed."))
+                new_status = "info_complete" # Proceed to doctor_recommender
+        elif action == "REJECT":
+            if review_info.get("review_type") == "APPOINTMENT_APPROVAL":
+                response_messages.append(AIMessage(content="❌ The doctor is unable to confirm this specific slot. Please select a different time or doctor."))
+                new_status = "awaiting_slot_selection"
+            else:
+                response_messages.append(AIMessage(content="❌ The doctor has reviewed your request and determined we cannot proceed with online booking for this. Please visit the hospital or contact reception."))
+                new_status = "rejected_by_doctor"
+        elif action == "EMERGENCY":
+            response_messages.append(AIMessage(content="⚠️ CRITICAL ALERT: A doctor has reviewed your case and marked it as a medical emergency. Please call our Emergency Line immediately at +91 79 4012 3999, or visit the nearest hospital ER."))
+            new_status = "emergency_redirect"
+        
+        if review_info.get("review_type") == "APPOINTMENT_APPROVAL":
+            from backend.database import SessionLocal
+            from backend.models import Appointment
+            import uuid
+            
+            db = SessionLocal()
+            try:
+                session_uuid = uuid.UUID(state.get("session_id")) if state.get("session_id") else None
+                if session_uuid:
+                    pending_appt = db.query(Appointment).filter(
+                        Appointment.conversation_id == session_uuid,
+                        Appointment.status == "PENDING"
+                    ).first()
+                    
+                    if pending_appt:
+                        if action in ["REJECT", "EMERGENCY"]:
+                            pending_appt.status = "CANCELLED"
+                            db.commit()
+            except Exception as e:
+                print(f"[DEBUG] Error updating pending appointment status on human review: {e}")
+            finally:
+                db.close()
+                
+        return {
+            "review_info": final_review_info,
+            "booking_status": new_status,
+            "messages": response_messages
+        }
 
     # Initialize a new review using session_id
     review_id = state.get("session_id", str(uuid.uuid4()))
@@ -80,63 +131,11 @@ def human_review_node(state: HospitalState) -> Dict[str, Any]:
     }
     
     # Inform the user that we are waiting for a doctor
-    wait_message = (
-        "⏳ Based on your input, your case requires a doctor's review before we can proceed. "
-        "A notification has been sent to our triage team. Please wait while a doctor reviews your case."
-    )
+    wait_message = "⏳ you will notify when doctor accept this req"
     
-    # Return updated state before interrupting
-    # We must interrupt AFTER returning the state update so the state is saved.
-    # Actually, interrupt() raises an exception that stops execution.
-    # According to LangGraph docs, if we want to save state, we can return the state, 
-    # and the NEXT node should be a dummy node that interrupts, OR we can call interrupt() inside the node
-    # and the value returned by interrupt is assigned when resumed.
-    
-    # LangGraph >= 0.1 interrupt approach:
-    # decision = interrupt("Waiting for doctor review")
-    # if decision:
-    #     ... process decision ...
-    
-    # To keep it simple, we will return the updated state and transition to a wait node,
-    # or just use interrupt() here.
-    
-    # Let's send the user message first, then interrupt.
-    # Actually, if we return from this node, state is saved. 
-    # We can use interrupt(value) directly.
-    decision = interrupt({
+    # Return state update. This routes back to human_review which then triggers the interrupt.
+    return {
         "messages": [AIMessage(content=wait_message)],
         "review_info": new_review_info,
         "booking_status": "awaiting_review"
-    })
-    
-    # When resumed via Command(resume={"decision": "APPROVE"}), the node continues here.
-    action = decision.get("decision", "").upper() if isinstance(decision, dict) else str(decision).upper()
-    
-    final_review_info = {**new_review_info, "pending_action": False, "review_status": action}
-    
-    response_messages = []
-    new_status = state.get("booking_status")
-    
-    if action == "APPROVE":
-        if review_type == "APPOINTMENT_APPROVAL":
-            response_messages.append(AIMessage(content="✅ The doctor has approved your appointment slot."))
-            new_status = "appointment_approved"
-        else:
-            response_messages.append(AIMessage(content="✅ The doctor has reviewed and approved your request. Let's proceed."))
-            new_status = "info_complete" # Proceed to doctor_recommender
-    elif action == "REJECT":
-        if review_type == "APPOINTMENT_APPROVAL":
-            response_messages.append(AIMessage(content="❌ The doctor is unable to confirm this specific slot. Please select a different time or doctor."))
-            new_status = "awaiting_slot_selection"
-        else:
-            response_messages.append(AIMessage(content="❌ The doctor has reviewed your request and determined we cannot proceed with online booking for this. Please visit the hospital or contact reception."))
-            new_status = "rejected_by_doctor"
-    elif action == "EMERGENCY":
-        response_messages.append(AIMessage(content="⚠️ CRITICAL ALERT: A doctor has reviewed your case and marked it as a medical emergency. Please call our Emergency Line immediately at +91 79 4012 3999, or visit the nearest hospital ER."))
-        new_status = "emergency_redirect"
-    
-    return {
-        "review_info": final_review_info,
-        "booking_status": new_status,
-        "messages": response_messages
     }
