@@ -17,15 +17,21 @@ def route_intent(state: HospitalState) -> str:
     """Decide next node based on classified user intent."""
     intent = state.get("intent")
     status = state.get("booking_status")
+
+    # OFF_TOPIC: reply is already attached to messages by intent_node — exit immediately
+    if intent == "OFF_TOPIC":
+        return END
+
     if (
-        intent == "BOOK" or 
+        intent == "BOOK" or
         status in [
-            "awaiting_slot_selection", "awaiting_symptoms", 
+            "awaiting_slot_selection", "awaiting_symptoms",
             "emergency_redirect", "no_slots_available", "no_doctors_available"
         ]
     ):
         return "patient_info"
-    # GREETINGS or other intents exit to wait/respond directly
+
+    # GREETING or unrecognised intents — reply already in messages, exit to user
     return END
 
 def route_missing_info(state: HospitalState) -> str:
