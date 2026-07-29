@@ -321,8 +321,13 @@ def send_human_review_request(
     age: str,
     symptoms: str,
     review_id: str,
-    review_type: str
+    review_type: str,
+    details: str = ""
 ) -> None:
+    details_html = ""
+    if details:
+        details_html = _info_row("ℹ️ Details", details)
+        
     body = f"""
     <h2 style="color:#b91c1c;margin:0 0 8px;">⚠️ Doctor Review Required</h2>
     <p style="color:#475569;font-size:15px;margin:0 0 24px;">
@@ -334,6 +339,7 @@ def send_human_review_request(
         {_info_row("👤 Patient Name", patient_name)}
         {_info_row("🎂 Age", age)}
         {_info_row("🩹 Symptoms", symptoms)}
+        {details_html}
         {_info_row("🆔 Review ID", review_id)}
       </table>
     </div>

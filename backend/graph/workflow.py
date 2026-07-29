@@ -13,6 +13,7 @@ from backend.graph.nodes.doctor_recommender import doctor_recommender_node
 from backend.graph.nodes.schedule import schedule_node
 from backend.graph.nodes.booking import booking_node
 from backend.graph.nodes.human_review import human_review_node
+from backend.graph.nodes.finalize_booking import finalize_booking_node
 
 def route_intent(state: HospitalState) -> str:
     """Decide next node based on classified user intent."""
@@ -145,7 +146,7 @@ def route_missing_info(state: HospitalState) -> str:
     return END
 
 def route_booking(state: HospitalState) -> str:
-    """Decide next node from booking selection."""
+    """Decide next step based on booking attempt results."""
     status = state.get("booking_status")
     if status == "info_complete":
         # If the user typed a date/time preference instead of a slot number,
@@ -165,6 +166,10 @@ def route_booking(state: HospitalState) -> str:
             if not has_numeric and any(kw in last_msg for kw in date_keywords):
                 return "schedule"
         return "symptom"
+    if status == "awaiting_slot_selection":
+        return "schedule"
+    if status == "appointment_approval_required":
+        return "human_review"
     return END
 
 def route_emergency(state: HospitalState) -> str:
@@ -185,6 +190,8 @@ def route_human_review(state: HospitalState) -> str:
     status = state.get("booking_status")
     if status == "info_complete":
         return "doctor_recommender"
+    if status == "appointment_approved":
+        return "finalize_booking"
     return END
 
 # Initialize the workflow graph
@@ -202,6 +209,7 @@ workflow.add_node("human_review", human_review_node)
 workflow.add_node("doctor_recommender", doctor_recommender_node)
 workflow.add_node("schedule", schedule_node)
 workflow.add_node("booking", booking_node)
+workflow.add_node("finalize_booking", finalize_booking_node)
 
 # Configure transitions and edges
 workflow.add_edge(START, "input")
@@ -231,6 +239,8 @@ workflow.add_conditional_edges(
     }
 )
 
+workflow.add_edge("schedule", "booking")
+
 # Conditional routing from Booking Confirmation Node
 workflow.add_conditional_edges(
     "booking",
@@ -238,6 +248,7 @@ workflow.add_conditional_edges(
     {
         "symptom": "symptom",
         "schedule": "schedule",
+        "human_review": "human_review",
         END: END
     }
 )
@@ -262,9 +273,13 @@ workflow.add_conditional_edges(
     route_human_review,
     {
         "doctor_recommender": "doctor_recommender",
+        "finalize_booking": "finalize_booking",
         END: END
     }
 )
+
+# finalize_booking naturally goes to END
+workflow.add_edge("finalize_booking", END)
 
 # doctor recommender -> schedule optimizer -> END
 workflow.add_edge("doctor_recommender", "schedule")

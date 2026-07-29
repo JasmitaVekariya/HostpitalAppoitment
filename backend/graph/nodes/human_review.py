@@ -28,6 +28,9 @@ def human_review_node(state: HospitalState) -> Dict[str, Any]:
     elif booking_status == "prescription_request":
         needs_review = True
         review_type = "PRESCRIPTION"
+    elif booking_status == "appointment_approval_required":
+        needs_review = True
+        review_type = "APPOINTMENT_APPROVAL"
 
     if not needs_review:
         return {}
@@ -50,6 +53,12 @@ def human_review_node(state: HospitalState) -> Dict[str, Any]:
     from backend.config import settings
     doctor_email = settings.EMAIL_USER
     
+    details = ""
+    if review_type == "APPOINTMENT_APPROVAL":
+        selected_slot = state.get("selected_slot", {})
+        if selected_slot:
+            details = f"Requested Slot: {selected_slot.get('date', 'Unknown Date')} at {selected_slot.get('start_time', 'Unknown Time')}"
+
     # Send email asynchronously
     send_human_review_request(
         to_address=doctor_email,
@@ -57,7 +66,8 @@ def human_review_node(state: HospitalState) -> Dict[str, Any]:
         age=str(age),
         symptoms=symptoms_str,
         review_id=review_id,
-        review_type=review_type
+        review_type=review_type,
+        details=details
     )
 
     new_review_info = {
@@ -108,11 +118,19 @@ def human_review_node(state: HospitalState) -> Dict[str, Any]:
     new_status = state.get("booking_status")
     
     if action == "APPROVE":
-        response_messages.append(AIMessage(content="✅ The doctor has reviewed and approved your request. Let's proceed."))
-        new_status = "info_complete" # Proceed to doctor_recommender
+        if review_type == "APPOINTMENT_APPROVAL":
+            response_messages.append(AIMessage(content="✅ The doctor has approved your appointment slot."))
+            new_status = "appointment_approved"
+        else:
+            response_messages.append(AIMessage(content="✅ The doctor has reviewed and approved your request. Let's proceed."))
+            new_status = "info_complete" # Proceed to doctor_recommender
     elif action == "REJECT":
-        response_messages.append(AIMessage(content="❌ The doctor has reviewed your request and determined we cannot proceed with online booking for this. Please visit the hospital or contact reception."))
-        new_status = "rejected_by_doctor"
+        if review_type == "APPOINTMENT_APPROVAL":
+            response_messages.append(AIMessage(content="❌ The doctor is unable to confirm this specific slot. Please select a different time or doctor."))
+            new_status = "awaiting_slot_selection"
+        else:
+            response_messages.append(AIMessage(content="❌ The doctor has reviewed your request and determined we cannot proceed with online booking for this. Please visit the hospital or contact reception."))
+            new_status = "rejected_by_doctor"
     elif action == "EMERGENCY":
         response_messages.append(AIMessage(content="⚠️ CRITICAL ALERT: A doctor has reviewed your case and marked it as a medical emergency. Please call our Emergency Line immediately at +91 79 4012 3999, or visit the nearest hospital ER."))
         new_status = "emergency_redirect"

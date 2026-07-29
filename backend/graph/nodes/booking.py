@@ -177,48 +177,10 @@ def booking_node(state: HospitalState) -> Dict[str, Any]:
                     "errors": errors
                 }
                 
-            # 3a. Commit Reschedule
-            # Free old slot
-            old_slot = db.query(DoctorSchedule).filter(DoctorSchedule.id == existing_appt.schedule_id).first()
-            old_date = old_slot.date if old_slot else None
-            old_time = old_slot.start_time if old_slot else None
-            if old_slot:
-                old_slot.status = "available"
-                
-            # Bind new slot
-            slot_record.status = "booked"
-            existing_appt.schedule_id = slot_record.id
-            existing_appt.status = "RESCHEDULED"
-            db.commit()
-
-            # Send reschedule email notification (non-blocking)
-            try:
-                patient_user = db.query(User).filter(User.id == existing_appt.patient_id).first()
-                if patient_user:
-                    send_reschedule_confirmation(
-                        patient_email=patient_user.email,
-                        patient_name=patient_user.name,
-                        doctor_name=selected_doctor["name"] if selected_doctor else "Your Doctor",
-                        specialization=selected_doctor.get("specialization", "") if selected_doctor else "",
-                        new_date=slot_record.date,
-                        new_time=slot_record.start_time,
-                        old_date=old_date,
-                        old_time=old_time,
-                    )
-            except Exception as email_err:
-                print(f"[EMAIL] Booking reschedule notification error: {email_err}")
-            
-            reschedule_msg = (
-                f"🔄 Appointment Rescheduled successfully!\n\n"
-                f"Your appointment with {selected_doctor['name']} ({selected_doctor['specialization']}) has been moved to "
-                f"{slot_record.date.strftime('%A, %B %d, %Y')} at {slot_record.start_time.strftime('%I:%M %p')}.\n\n"
-                f"A new confirmation email has been sent to your registered address."
-            )
+            # 3a. Prepare Reschedule (Defer DB insertion for Human Review)
             return {
-                "booking_status": "confirmed",
-                "available_slots": [],
-                "selected_doctor": None,
-                "messages": [AIMessage(content=reschedule_msg)],
+                "booking_status": "appointment_approval_required",
+                "selected_slot": chosen_slot_data,
                 "errors": errors
             }
             
@@ -244,69 +206,22 @@ def booking_node(state: HospitalState) -> Dict[str, Any]:
                 "errors": errors
             }
             
-        # 3b. Commit New Booking
-        symptom_list = state.get("symptoms", {}).get("symptoms", [])
-        new_appointment = Appointment(
-            patient_id=patient_uuid,
-            doctor_id=slot_record.doctor_id,
-            schedule_id=slot_record.id,
-            symptoms=str(symptom_list),
-            symptom_summary=", ".join(symptom_list),
-            booking_status="confirmed",
-            status="UPCOMING",
-            conversation_id=session_uuid
-        )
-        db.add(new_appointment)
-        
-        # Mark slot as booked
-        slot_record.status = "booked"
-        db.commit()
-
-        # Send booking confirmation email (non-blocking)
-        try:
-            patient_user = db.query(User).filter(User.id == patient_uuid).first()
-            doc_record = db.query(Doctor).filter(Doctor.id == slot_record.doctor_id).first()
-            if patient_user and doc_record:
-                from backend.models import Department
-                dept = db.query(Department).filter(Department.id == doc_record.department_id).first()
-                send_booking_confirmation(
-                    patient_email=patient_user.email,
-                    patient_name=patient_user.name,
-                    doctor_name=doc_record.name,
-                    specialization=doc_record.specialization,
-                    department=dept.name if dept else "",
-                    appointment_date=slot_record.date,
-                    appointment_time=slot_record.start_time,
-                    symptoms=", ".join(symptom_list) if symptom_list else "",
-                    floor=str(dept.floor) if dept else None,
-                )
-        except Exception as email_err:
-            print(f"[EMAIL] Booking confirmation notification error: {email_err}")
-        
-        confirmation_msg = (
-            f"🎉 Booking Confirmed!\n\n"
-            f"Your appointment with {selected_doctor['name']} ({selected_doctor['specialization']}) is booked for "
-            f"{slot_record.date.strftime('%A, %B %d, %Y')} at {slot_record.start_time.strftime('%I:%M %p')}.\n\n"
-            f"A confirmation email has been sent to your registered address."
-        )
-        
-        # Clear slot state to reset booking context for the next booking
+        # 3b. Prepare New Booking (Defer DB insertion for Human Review)
         return {
-            "booking_status": "confirmed",
-            "available_slots": [],
-            "selected_doctor": None,
-            "messages": [AIMessage(content=confirmation_msg)],
+            "booking_status": "appointment_approval_required",
+            "selected_slot": chosen_slot_data,
             "errors": errors
         }
         
     except Exception as e:
-        print(f"[DEBUG] Booking confirmation failed: {e}")
+        print(f"[DEBUG] Booking processing failed: {e}")
         db.rollback()
-        errors.append(f"Booking database confirmation error: {e}")
+        errors.append(f"Booking processing error: {e}")
         return {
             "booking_status": "awaiting_slot_selection",
-            "messages": [AIMessage(content="I encountered an issue booking your appointment in the database. Please try selecting the slot again.")],
+            "messages": [AIMessage(content="I encountered an issue processing your slot selection. Please try selecting the slot again.")],
             "errors": errors
         }
     finally:
         db.close()
+
