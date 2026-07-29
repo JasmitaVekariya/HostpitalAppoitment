@@ -16,7 +16,7 @@ from backend.config import settings
 # ─────────────────────────────────────────────
 
 def _send_email_sync(to_address: str, subject: str, html_body: str, text_body: str = "") -> None:
-    """Low-level SMTP send. Called in a background thread so it never blocks a request."""
+    """Low-level SMTP send with up to 3 retry attempts. Called in a background thread."""
     if not settings.EMAIL_USER or not settings.EMAIL_PASSWORD:
         print("[EMAIL] Email credentials not configured – skipping send.")
         return
@@ -30,13 +30,22 @@ def _send_email_sync(to_address: str, subject: str, html_body: str, text_body: s
         msg.attach(MIMEText(text_body, "plain"))
     msg.attach(MIMEText(html_body, "html"))
 
-    try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15) as server:
-            server.login(settings.EMAIL_USER, settings.EMAIL_PASSWORD)
-            server.sendmail(settings.EMAIL_USER, to_address, msg.as_string())
-        print(f"[EMAIL] ✅ Sent '{subject}' to {to_address}")
-    except Exception as e:
-        print(f"[EMAIL] ❌ Failed to send email to {to_address}: {e}")
+    max_attempts = 3
+    for attempt in range(1, max_attempts + 1):
+        try:
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15) as server:
+                server.login(settings.EMAIL_USER, settings.EMAIL_PASSWORD)
+                server.sendmail(settings.EMAIL_USER, to_address, msg.as_string())
+            print(f"[EMAIL] ✅ Sent '{subject}' to {to_address} (attempt {attempt})")
+            return  # success — stop retrying
+        except Exception as e:
+            print(f"[EMAIL] ⚠️ Attempt {attempt}/{max_attempts} failed for {to_address}: {e}")
+            if attempt < max_attempts:
+                import time
+                time.sleep(2)  # brief pause before next attempt
+
+    print(f"[EMAIL] ❌ All {max_attempts} attempts failed. Email to {to_address} could not be delivered.")
+
 
 
 def send_email(to_address: str, subject: str, html_body: str, text_body: str = "") -> None:

@@ -78,7 +78,7 @@ def symptom_node(state: HospitalState) -> Dict[str, Any]:
             api_messages.append({"role": role, "content": msg.content})
             
         response_content = call_openrouter_api(api_messages)
-        result_dict = parse_json_markdown(response_content)
+        result_dict = parse_json_markdown(response_content, retry_messages=api_messages)
         print(f"[DEBUG] Symptom extraction LLM parsed result: {result_dict}")
         
         extracted_symptoms = result_dict.get("symptoms", [])
@@ -153,13 +153,13 @@ def symptom_node(state: HospitalState) -> Dict[str, Any]:
             "symptoms": symptom_data,
             "booking_status": "awaiting_symptoms",
             "messages": [ai_message],
-            "topic_shifted": extracted_topic_shifted,
+            "topic_shifted": extracted_topic_shifted,  # cleared to False after this turn
             "errors": errors
         }
         
     return {
         "symptoms": symptom_data,
         "booking_status": "info_complete",
-        "topic_shifted": extracted_topic_shifted,
+        "topic_shifted": extracted_topic_shifted,  # cleared to False after this turn
         "errors": errors
     }

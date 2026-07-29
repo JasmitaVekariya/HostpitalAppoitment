@@ -118,50 +118,75 @@ def call_openrouter_api(messages: list, temperature: float = 0.1) -> str:
     else:
         return call_openrouter_api_raw(messages, temperature)
 
-def parse_json_markdown(text: str) -> dict:
-    """Robust utility to extract and parse JSON from LLM text responses, 
-    supporting markdown backticks (e.g. ```json ... ```) or raw strings.
+def parse_json_markdown(text: str, retry_messages: list = None) -> dict:
+    """Robust utility to extract and parse JSON from LLM text responses.
+    Supports markdown backticks (e.g. ```json ... ```) or raw strings.
+    If parsing fails and retry_messages is provided, makes one retry LLM call
+    requesting clean JSON output before raising the error.
     """
-    text = text.strip()
-    
-    # 1. Try finding JSON inside markdown backticks
-    pattern = r"```(?:json)?\s*(\{.*?\})\s*```"
-    match = re.search(pattern, text, re.DOTALL)
-    if match:
-        json_str = match.group(1)
-    else:
-        # 2. Try finding the first '{' and last '}'
-        start = text.find("{")
-        end = text.rfind("}")
-        if start != -1 and end != -1:
-            json_str = text[start:end+1]
+    def _try_parse(t: str) -> dict:
+        t = t.strip()
+
+        # 1. Try finding JSON inside markdown backticks
+        pattern = r"```(?:json)?\s*(\{.*?\})\s*```"
+        match = re.search(pattern, t, re.DOTALL)
+        if match:
+            json_str = match.group(1)
         else:
-            json_str = text
-            
-    json_str = json_str.strip()
-    
-    # 3. Attempt standard parsing
+            # 2. Try finding the first '{' and last '}'
+            start = t.find("{")
+            end = t.rfind("}")
+            if start != -1 and end != -1:
+                json_str = t[start:end+1]
+            else:
+                json_str = t
+
+        json_str = json_str.strip()
+
+        # 3. Attempt standard parsing
+        try:
+            return json.loads(json_str)
+        except json.JSONDecodeError as e:
+            # Fallback: attempt key-value line parsing
+            extracted = {}
+            for line in t.split("\n"):
+                line = line.strip("-* ").strip()
+                if ":" in line:
+                    key, val = line.split(":", 1)
+                    key_clean = key.strip().lower()
+                    val_clean = val.strip().strip('"\'') 
+                    if "name" in key_clean:
+                        extracted["name"] = val_clean
+                    elif "age" in key_clean:
+                        age_digits = re.findall(r"\d+", val_clean)
+                        if age_digits:
+                            extracted["age"] = int(age_digits[0])
+                    elif "gender" in key_clean:
+                        extracted["gender"] = val_clean
+                    elif "phone" in key_clean:
+                        extracted["phone"] = val_clean
+            if extracted:
+                return extracted
+            raise e
+
+    # First attempt
     try:
-        return json.loads(json_str)
-    except json.JSONDecodeError as e:
-        # Fallback: attempt key-value line parsing
-        extracted = {}
-        for line in text.split("\n"):
-            line = line.strip("-* ").strip()
-            if ":" in line:
-                key, val = line.split(":", 1)
-                key_clean = key.strip().lower()
-                val_clean = val.strip().strip('"\'')
-                if "name" in key_clean:
-                    extracted["name"] = val_clean
-                elif "age" in key_clean:
-                    age_digits = re.findall(r"\d+", val_clean)
-                    if age_digits:
-                        extracted["age"] = int(age_digits[0])
-                elif "gender" in key_clean:
-                    extracted["gender"] = val_clean
-                elif "phone" in key_clean:
-                    extracted["phone"] = val_clean
-        if extracted:
-            return extracted
-        raise e
+        return _try_parse(text)
+    except (json.JSONDecodeError, Exception) as first_err:
+        # ── Retry once with explicit JSON-only instruction ──────────────────
+        if retry_messages:
+            print(f"[DEBUG] JSON parse failed, retrying with JSON-only prompt: {first_err}")
+            try:
+                retry_prompt = list(retry_messages) + [{
+                    "role": "user",
+                    "content": (
+                        "Your previous response could not be parsed as JSON. "
+                        "Please respond ONLY with a valid JSON object — no markdown, "
+                        "no backticks, no explanatory text. Just the raw JSON object."
+                    )
+                }]
+                retry_response = call_openrouter_api(retry_prompt)
+                return _try_parse(retry_response)
+            except Exception as retry_err:
+                print(f"[DEBUG] JSON parse retry also failed: {retry_err}")
+        raise first_err

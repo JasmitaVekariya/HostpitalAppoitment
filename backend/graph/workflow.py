@@ -37,6 +37,14 @@ def route_intent(state: HospitalState) -> str:
 def route_missing_info(state: HospitalState) -> str:
     """Decide next node based on completeness of patient info."""
     status = state.get("booking_status")
+
+    # ── Topic shift detected → re-run full medical decision pipeline ──────────
+    # When the patient changes their medical topic entirely (e.g. was discussing
+    # fever, now asks about toothache), force a fresh triage cycle even if a
+    # slot selection was already in progress.
+    if state.get("topic_shifted"):
+        return "symptom"
+
     if status in [
         "info_complete", "awaiting_symptoms", "emergency_redirect",
         "no_slots_available", "no_doctors_available"
