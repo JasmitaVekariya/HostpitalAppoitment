@@ -10,6 +10,12 @@ from backend.schemas.chat import ChatRequest, ChatResponse
 from backend.utils.auth_deps import get_current_user
 from backend.graph.workflow import app as graph_app
 from langchain_core.messages import HumanMessage, AIMessage
+from backend.utils.email import (
+    send_booking_confirmation,
+    send_reschedule_confirmation,
+    send_cancellation_notice,
+    send_completion_summary,
+)
 
 def update_missed_appointments(db: Session):
     """Automatically transition appointments to MISSED if their time has passed and they are not COMPLETED/CANCELLED."""
@@ -360,6 +366,22 @@ def cancel_appointment(
         sched.status = "available"
         
     db.commit()
+
+    # Send cancellation email notification (non-blocking)
+    try:
+        from backend.models import Doctor
+        doc = db.query(Doctor).filter(Doctor.id == appt.doctor_id).first()
+        if sched:
+            send_cancellation_notice(
+                patient_email=current_user.email,
+                patient_name=current_user.name,
+                doctor_name=doc.name if doc else "Your Doctor",
+                appointment_date=sched.date,
+                appointment_time=sched.start_time,
+            )
+    except Exception as email_err:
+        print(f"[EMAIL] Cancel notification error: {email_err}")
+
     return {"status": "success", "message": "Appointment cancelled successfully"}
 
 class RescheduleRequest(BaseModel):
@@ -408,6 +430,24 @@ def reschedule_appointment(
     appt.status = "RESCHEDULED"
     
     db.commit()
+
+    # Send reschedule email notification (non-blocking)
+    try:
+        from backend.models import Doctor
+        doc = db.query(Doctor).filter(Doctor.id == appt.doctor_id).first()
+        send_reschedule_confirmation(
+            patient_email=current_user.email,
+            patient_name=current_user.name,
+            doctor_name=doc.name if doc else "Your Doctor",
+            specialization=doc.specialization if doc else "",
+            new_date=new_sched.date,
+            new_time=new_sched.start_time,
+            old_date=old_sched.date if old_sched else None,
+            old_time=old_sched.start_time if old_sched else None,
+        )
+    except Exception as email_err:
+        print(f"[EMAIL] Reschedule notification error: {email_err}")
+
     return {"status": "success", "message": "Appointment rescheduled successfully"}
 
 class CompleteAppointmentRequest(BaseModel):
@@ -444,6 +484,23 @@ def complete_appointment(
     appt.doctor_notes = payload.doctor_notes
     
     db.commit()
+
+    # Send completion summary email (non-blocking)
+    try:
+        from backend.models import DoctorSchedule
+        patient = db.query(User).filter(User.id == appt.patient_id).first()
+        sched = db.query(DoctorSchedule).filter(DoctorSchedule.id == appt.schedule_id).first()
+        if patient and sched:
+            send_completion_summary(
+                patient_email=patient.email,
+                patient_name=patient.name,
+                doctor_name=current_user.name,
+                appointment_date=sched.date,
+                doctor_notes=payload.doctor_notes,
+            )
+    except Exception as email_err:
+        print(f"[EMAIL] Completion notification error: {email_err}")
+
     return {"status": "success", "message": "Appointment marked as completed successfully."}
 
 @router.get("/doctor/appointments")
