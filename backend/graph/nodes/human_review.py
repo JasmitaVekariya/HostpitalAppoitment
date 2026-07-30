@@ -31,6 +31,9 @@ def human_review_node(state: HospitalState) -> Dict[str, Any]:
     elif booking_status == "appointment_approval_required":
         needs_review = True
         review_type = "APPOINTMENT_APPROVAL"
+    elif booking_status == "awaiting_review":
+        needs_review = True
+        review_type = review_info.get("review_type", "APPOINTMENT_APPROVAL")
 
     if not needs_review:
         return {}
@@ -66,7 +69,6 @@ def human_review_node(state: HospitalState) -> Dict[str, Any]:
         if review_info.get("review_type") == "APPOINTMENT_APPROVAL":
             from backend.database import SessionLocal
             from backend.models import Appointment
-            import uuid
             
             db = SessionLocal()
             try:

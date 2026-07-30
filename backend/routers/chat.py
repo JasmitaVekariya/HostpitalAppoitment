@@ -75,7 +75,7 @@ def handle_chat_message(
             current_state={}
         )
         db.add(conversation)
-        db.flush()
+        db.commit()
 
     # Configure graph execution context with the session ID as thread_id
     config = {"configurable": {"thread_id": str(session_uuid)}}
@@ -152,6 +152,8 @@ def handle_chat_message(
                         session_uuid = new_session_uuid
                         conversation = new_conversation
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"LangGraph execution error: {e}"

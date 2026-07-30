@@ -42,22 +42,25 @@ def finalize_booking_node(state: HospitalState) -> Dict[str, Any]:
             return {"errors": errors + ["Finalize Booking: No PENDING appointment found."]}
             
         old_slot_id = state.get("old_slot_id")
+        old_appt_id = state.get("old_appt_id")
         
-        if old_slot_id:
+        if old_slot_id and old_appt_id:
             # Complete Reschedule
             old_slot = db.query(DoctorSchedule).filter(DoctorSchedule.id == old_slot_id).first()
+            old_appt = db.query(Appointment).filter(Appointment.id == uuid.UUID(old_appt_id)).first()
+            
             old_date = old_slot.date if old_slot else None
             old_time = old_slot.start_time if old_slot else None
             
             if old_slot:
                 old_slot.status = "available"
+            if old_appt:
+                old_appt.status = "CANCELLED"
                 
             slot_record.status = "booked"
             existing_appt.status = "RESCHEDULED"
             existing_appt.booking_status = "confirmed"
             db.commit()
-            
-            # Send Email
             try:
                 patient_user = db.query(User).filter(User.id == existing_appt.patient_id).first()
                 if patient_user:

@@ -59,6 +59,9 @@ class HospitalState(TypedDict):
     # Patient's expressed date/time scheduling preference (ISO date string & HH:MM time string)
     preferred_date: Optional[str]
     preferred_time: Optional[str]
+    
+    old_slot_id: Optional[int]
+    old_appt_id: Optional[str]
 
     # Global tracking arrays
     errors: List[str]

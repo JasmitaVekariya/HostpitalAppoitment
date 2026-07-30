@@ -34,8 +34,8 @@ export default function PatientDashboard() {
   const chatEndRef = useRef(null);
   const textareaRef = useRef(null);
   const recognitionRef = useRef(null);
+  const usedVoiceRef = useRef(false);
   const [isListening, setIsListening] = useState(false);
-  const [usedVoiceForLastInput, setUsedVoiceForLastInput] = useState(false);
   const user = JSON.parse(localStorage.getItem("user") || "{}");
 
   useEffect(() => {
@@ -68,7 +68,7 @@ export default function PatientDashboard() {
       rec.onresult = (event) => {
         const text = event.results[0][0].transcript;
         setInputValue((prev) => (prev ? prev + " " + text : text));
-        setUsedVoiceForLastInput(true);
+        usedVoiceRef.current = true;
       };
       recognitionRef.current = rec;
     }
@@ -112,11 +112,11 @@ export default function PatientDashboard() {
           lastMsg.content.includes("Option 2") || 
           bookingStatus === "awaiting_slot_selection";
           
-        if (!isSlotPresentation && usedVoiceForLastInput) {
+        if (!isSlotPresentation && usedVoiceRef.current) {
           speakText(lastMsg.content);
         }
         // Always reset flag to prevent repeating voice readback on text typing
-        setUsedVoiceForLastInput(false);
+        usedVoiceRef.current = false;
       }
     }
   }, [messages, bookingStatus, loading]);
@@ -844,7 +844,7 @@ export default function PatientDashboard() {
                     value={inputValue}
                     onChange={(e) => {
                       setInputValue(e.target.value);
-                      setUsedVoiceForLastInput(false);
+                      usedVoiceRef.current = false;
                     }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) {

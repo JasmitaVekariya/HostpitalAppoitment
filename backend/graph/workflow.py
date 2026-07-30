@@ -40,12 +40,7 @@ def route_missing_info(state: HospitalState) -> str:
     """Decide next node based on completeness of patient info."""
     status = state.get("booking_status")
 
-    # ── Topic shift detected → re-run full medical decision pipeline ──────────
-    # When the patient changes their medical topic entirely (e.g. was discussing
-    # fever, now asks about toothache), force a fresh triage cycle even if a
-    # slot selection was already in progress.
-    if state.get("topic_shifted"):
-        return "symptom"
+
 
     if status in [
         "info_complete", "awaiting_symptoms", "emergency_redirect",
@@ -175,10 +170,9 @@ def route_booking(state: HospitalState) -> str:
 def route_emergency(state: HospitalState) -> str:
     """Decide next step based on triage priority override and HITL."""
     status = state.get("booking_status")
-    priority = state.get("priority")
     
-    # Route to human review if HITL case triggered
-    if status == "emergency_redirect" or priority == "EMERGENCY" or status == "prescription_request":
+    # Route to human review if it's an extreme emergency that skips booking
+    if status == "emergency_redirect":
         return "human_review"
         
     if status == "awaiting_symptoms":
@@ -242,8 +236,6 @@ workflow.add_conditional_edges(
         END: END
     }
 )
-
-workflow.add_edge("schedule", "booking")
 
 # Conditional routing from Booking Confirmation Node
 workflow.add_conditional_edges(
